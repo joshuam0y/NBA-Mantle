@@ -78,13 +78,14 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     shared_teammates = teammates1 & teammates2
     shared_teammates_count = len(shared_teammates)
 
-    if shared_teammates_count >= 12:
-        tm_pts = 8
-    elif shared_teammates_count >= 6:
+    # Keep this as a soft, high-threshold signal so it doesn't dominate.
+    if shared_teammates_count >= 40:
         tm_pts = 5
-    elif shared_teammates_count >= 3:
+    elif shared_teammates_count >= 25:
         tm_pts = 3
-    elif shared_teammates_count >= 1:
+    elif shared_teammates_count >= 10:
+        tm_pts = 2
+    elif shared_teammates_count >= 3:
         tm_pts = 1
     else:
         tm_pts = 0
