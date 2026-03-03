@@ -72,18 +72,25 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     score += pts
     breakdown["shared_seasons"] = pts
 
-    # 2. Teammate years for this exact duo
-    teammate_years = player1.get("teammate_years", {}).get(name2, 0)
-    if teammate_years >= 4:
-        pts = 15
-    elif teammate_years >= 2:
-        pts = 10
-    elif teammate_years == 1:
-        pts = 6
+    # 2. Shared teammates (indirect connection signal)
+    teammates1 = set(player1.get("teammates", []))
+    teammates2 = set(player2.get("teammates", []))
+    shared_teammates = teammates1 & teammates2
+    shared_teammates_count = len(shared_teammates)
+
+    if shared_teammates_count >= 12:
+        tm_pts = 8
+    elif shared_teammates_count >= 6:
+        tm_pts = 5
+    elif shared_teammates_count >= 3:
+        tm_pts = 3
+    elif shared_teammates_count >= 1:
+        tm_pts = 1
     else:
-        pts = 0
-    score += pts
-    breakdown["teammate_years"] = pts
+        tm_pts = 0
+
+    score += tm_pts
+    breakdown["shared_teammates"] = tm_pts
 
     # 3. Shared franchises (even if not same seasons)
     overlap_teams = set(_filtered_teams(player1)) & set(_filtered_teams(player2))
