@@ -20,43 +20,39 @@ players_db = load_players_db()
 guess_counter = {}
 
 def compute_similarity(player1, player2, name1=None, name2=None):
+    """
+    Core similarity scoring between two players.
+
+    High-level ideas:
+    - Big points: actually played together (shared seasons), repeated teammates, same franchises.
+    - Medium points: same position, similar era, similar career length.
+    - Extra flavor: overlapping All-Star / All-NBA / other awards.
+    - No streak bonus.
+    """
     score = 0
     breakdown = {}
 
-    # Shared seasons
+    # 1. Shared seasons on the same team (main signal)
     p1_seasons = set((s["team"], s["season"]) for s in player1.get("seasons", []))
     p2_seasons = set((s["team"], s["season"]) for s in player2.get("seasons", []))
-    shared_seasons = sorted(p1_seasons & p2_seasons, key=lambda x: x[1])
+    shared_seasons = p1_seasons & p2_seasons
     shared_season_count = len(shared_seasons)
 
-    consecutive_bonus = 0
-    if shared_season_count >= 2:
-        years = [s for _, s in shared_seasons]
-        streak = 1
-        max_streak = 1
-        for i in range(1, len(years)):
-            if years[i] == years[i-1] + 1:
-                streak += 1
-                max_streak = max(max_streak, streak)
-            else:
-                streak = 1
-        consecutive_bonus = min(max_streak * 2, 10)
-
     if shared_season_count >= 6:
-        pts = 50
+        pts = 60
     elif shared_season_count >= 4:
-        pts = 40
+        pts = 50
     elif shared_season_count >= 2:
-        pts = 30
+        pts = 40
     elif shared_season_count == 1:
-        pts = 20
+        pts = 30
     else:
         pts = 0
 
-    score += pts + consecutive_bonus
+    score += pts
     breakdown["shared_seasons"] = pts
-    breakdown["shared_streak_bonus"] = consecutive_bonus
 
+<<<<<<< HEAD
     # Teammate years (lighter weight – main overlap already captured by shared seasons)
     teammate_years = player1.get("teammate_years", {}).get(name2, 0)
     if teammate_years >= 4:
@@ -65,13 +61,24 @@ def compute_similarity(player1, player2, name1=None, name2=None):
         pts = 3
     elif teammate_years == 1:
         pts = 2
+=======
+    # 2. Teammate years for this exact duo
+    teammate_years = player1.get("teammate_years", {}).get(name2, 0)
+    if teammate_years >= 4:
+        pts = 15
+    elif teammate_years >= 2:
+        pts = 10
+    elif teammate_years == 1:
+        pts = 6
+>>>>>>> b1c0320a (Rebalance similarity scoring)
     else:
         pts = 0
     score += pts
     breakdown["teammate_years"] = pts
 
-    # Shared franchises
+    # 3. Shared franchises (even if not same seasons)
     overlap_teams = set(player1.get("teams", [])) & set(player2.get("teams", []))
+<<<<<<< HEAD
     team_pts = min(len(overlap_teams) * 2, 6)  # cap so multiple franchises don't dominate
     score += team_pts
     breakdown["shared_teams"] = team_pts
@@ -94,28 +101,47 @@ def compute_similarity(player1, player2, name1=None, name2=None):
         pts = 8
     elif p1_pos[:2] == p2_pos[:2]:
         pts = 2
+=======
+    if len(overlap_teams) >= 3:
+        team_pts = 10
+    elif len(overlap_teams) == 2:
+        team_pts = 8
+    elif len(overlap_teams) == 1:
+        team_pts = 5
+    else:
+        team_pts = 0
+    score += team_pts
+    breakdown["shared_teams"] = team_pts
+
+    # 4. Position similarity
+    p1_pos = (player1.get("position") or "").strip()
+    p2_pos = (player2.get("position") or "").strip()
+    if p1_pos and p1_pos == p2_pos:
+        pts = 10
+    elif p1_pos[:2] and p1_pos[:2] == p2_pos[:2]:
+        pts = 4
+>>>>>>> b1c0320a (Rebalance similarity scoring)
     else:
         pts = 0
     score += pts
     breakdown["position_match"] = pts
 
-    # Start year (era proximity with exact match bonus)
+    # 5. Era proximity (start year)
     start1 = player1.get("start_year", 0)
     start2 = player2.get("start_year", 0)
-    era_diff = abs(start1 - start2)
-
-    if era_diff == 0:
-        era_pts = 6  # Big bonus for same start year
-    elif era_diff <= 5:
-        era_pts = 4
-    elif era_diff <= 10:
-        era_pts = 2
-    else:
-        era_pts = 0
-
+    era_pts = 0
+    if start1 and start2:
+        era_diff = abs(start1 - start2)
+        if era_diff == 0:
+            era_pts = 10
+        elif era_diff <= 5:
+            era_pts = 7
+        elif era_diff <= 10:
+            era_pts = 4
     score += era_pts
-    breakdown["start_year_diff"] = era_pts
+    breakdown["era_similarity"] = era_pts
 
+<<<<<<< HEAD
     # Draft year proximity
     draft1 = get_draft_year(player1)
     draft2 = get_draft_year(player2)
@@ -130,10 +156,14 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     breakdown["draft_year_diff"] = draft_pts
 
     # Career length similarity
+=======
+    # 6. Career length similarity
+>>>>>>> b1c0320a (Rebalance similarity scoring)
     cl1 = calculate_career_length(player1)
     cl2 = calculate_career_length(player2)
     cl_diff = abs(cl1 - cl2)
     if cl_diff <= 3:
+<<<<<<< HEAD
         cl_pts = 3
     elif cl_diff <= 5:
         cl_pts = 2
@@ -154,28 +184,41 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     breakdown["career_end_proximity"] = end_pts
 
     # All-Star (once)
-    if set(player1.get("all_star_seasons", [])) & set(player2.get("all_star_seasons", [])):
-        score += 3
-        breakdown["shared_all_star"] = 3
+=======
+        cl_pts = 6
+    elif cl_diff <= 5:
+        cl_pts = 3
+    else:
+        cl_pts = 0
+    score += cl_pts
+    breakdown["career_length_similarity"] = cl_pts
 
-    # All-NBA/Defense/Rookie team (once)
-    found_team = False
+    # 7. Star power / accolades overlap
+    all_star_pts = 0
+>>>>>>> b1c0320a (Rebalance similarity scoring)
+    if set(player1.get("all_star_seasons", [])) & set(player2.get("all_star_seasons", [])):
+        all_star_pts = 5
+    score += all_star_pts
+    breakdown["all_star_overlap"] = all_star_pts
+
+    all_team_pts = 0
     for sel1 in player1.get("all_team_selections", []):
         for sel2 in player2.get("all_team_selections", []):
             if sel1["season"] == sel2["season"] and sel1["type"] == sel2["type"]:
-                found_team = True
+                all_team_pts = 5
                 break
-        if found_team:
+        if all_team_pts:
             break
-    if found_team:
-        score += 3
-        breakdown["shared_all_team"] = 3
+    score += all_team_pts
+    breakdown["all_team_overlap"] = all_team_pts
 
-    # Shared award winners (once)
+    award_pts = 0
     if set(player1.get("awards_won", [])) & set(player2.get("awards_won", [])):
-        score += 5
-        breakdown["shared_awards"] = 5
+        award_pts = 8
+    score += award_pts
+    breakdown["award_overlap"] = award_pts
 
+    # Clamp non-exact matches below 100
     breakdown["total"] = min(score, 99)
     return breakdown["total"], breakdown
 
