@@ -19,6 +19,18 @@ def load_players_db():
 players_db = load_players_db()
 guess_counter = {}
 
+MULTI_TEAM_MARKERS = {"2TM", "3TM", "4TM", "5TM", "6TM"}
+
+
+def _filtered_seasons(player):
+    """Return seasons excluding aggregate multi-team rows like '2TM', '3TM'."""
+    seasons = player.get("seasons", [])
+    return [
+        s for s in seasons
+        if s.get("team") not in MULTI_TEAM_MARKERS and "season" in s
+    ]
+
+
 def compute_similarity(player1, player2, name1=None, name2=None):
     """
     Core similarity scoring between two players.
@@ -33,8 +45,8 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     breakdown = {}
 
     # 1. Shared seasons on the same team (main signal)
-    p1_seasons = set((s["team"], s["season"]) for s in player1.get("seasons", []))
-    p2_seasons = set((s["team"], s["season"]) for s in player2.get("seasons", []))
+    p1_seasons = set((s["team"], s["season"]) for s in _filtered_seasons(player1))
+    p2_seasons = set((s["team"], s["season"]) for s in _filtered_seasons(player2))
     shared_seasons = p1_seasons & p2_seasons
     shared_season_count = len(shared_seasons)
 
@@ -163,12 +175,12 @@ def calculate_career_length(player_data):
     We ignore any pre-computed "career_length" fields in the JSON so that
     edge cases like inactive / did-not-play years don't inflate the count.
     """
-    seasons = player_data.get("seasons", [])
+    seasons = _filtered_seasons(player_data)
     if not seasons:
-        # Fall back to stored career_length if we truly have no seasons data
+        # Fall back to stored career_length if we truly have no usable seasons data
         return max(player_data.get("career_length", 0), 0)
 
-    unique_seasons = {s["season"] for s in seasons}
+    unique_seasons = {s["season"] for s in seasons if "season" in s}
     return len(unique_seasons)
 
 def get_draft_year(player_data):
@@ -201,7 +213,7 @@ def create_players_summary():
             "career_length": calculate_career_length(player_data),
             "position": player_data.get("position", ""),
             "teams": player_data.get("teams", []),
-            "seasons_count": len(player_data.get("seasons", []))
+            "seasons_count": calculate_career_length(player_data),
         }
     
     return summary
