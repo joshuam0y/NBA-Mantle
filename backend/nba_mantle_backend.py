@@ -52,16 +52,6 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     score += pts
     breakdown["shared_seasons"] = pts
 
-<<<<<<< HEAD
-    # Teammate years (lighter weight – main overlap already captured by shared seasons)
-    teammate_years = player1.get("teammate_years", {}).get(name2, 0)
-    if teammate_years >= 4:
-        pts = 4
-    elif teammate_years >= 2:
-        pts = 3
-    elif teammate_years == 1:
-        pts = 2
-=======
     # 2. Teammate years for this exact duo
     teammate_years = player1.get("teammate_years", {}).get(name2, 0)
     if teammate_years >= 4:
@@ -70,7 +60,6 @@ def compute_similarity(player1, player2, name1=None, name2=None):
         pts = 10
     elif teammate_years == 1:
         pts = 6
->>>>>>> b1c0320a (Rebalance similarity scoring)
     else:
         pts = 0
     score += pts
@@ -78,30 +67,6 @@ def compute_similarity(player1, player2, name1=None, name2=None):
 
     # 3. Shared franchises (even if not same seasons)
     overlap_teams = set(player1.get("teams", [])) & set(player2.get("teams", []))
-<<<<<<< HEAD
-    team_pts = min(len(overlap_teams) * 2, 6)  # cap so multiple franchises don't dominate
-    score += team_pts
-    breakdown["shared_teams"] = team_pts
-
-    # Tenure overlap
-    tenure_bonus = 0
-    for team in overlap_teams:
-        p1_years = {s["season"] for s in player1["seasons"] if s["team"] == team}
-        p2_years = {s["season"] for s in player2["seasons"] if s["team"] == team}
-        overlap = len(p1_years & p2_years)
-        tenure_bonus += min(overlap, 3)
-    tenure_bonus = min(tenure_bonus, 6)
-    score += tenure_bonus
-    breakdown["team_tenure"] = tenure_bonus
-
-    # Position match
-    p1_pos = player1.get("position", "")
-    p2_pos = player2.get("position", "")
-    if p1_pos == p2_pos:
-        pts = 8
-    elif p1_pos[:2] == p2_pos[:2]:
-        pts = 2
-=======
     if len(overlap_teams) >= 3:
         team_pts = 10
     elif len(overlap_teams) == 2:
@@ -120,7 +85,6 @@ def compute_similarity(player1, player2, name1=None, name2=None):
         pts = 10
     elif p1_pos[:2] and p1_pos[:2] == p2_pos[:2]:
         pts = 4
->>>>>>> b1c0320a (Rebalance similarity scoring)
     else:
         pts = 0
     score += pts
@@ -141,50 +105,11 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     score += era_pts
     breakdown["era_similarity"] = era_pts
 
-<<<<<<< HEAD
-    # Draft year proximity
-    draft1 = get_draft_year(player1)
-    draft2 = get_draft_year(player2)
-    draft_pts = 0
-    if draft1 and draft2:
-        draft_diff = abs(draft1 - draft2)
-        if draft_diff <= 1:
-            draft_pts = 3
-        elif draft_diff <= 3:
-            draft_pts = 2
-    score += draft_pts
-    breakdown["draft_year_diff"] = draft_pts
-
-    # Career length similarity
-=======
     # 6. Career length similarity
->>>>>>> b1c0320a (Rebalance similarity scoring)
     cl1 = calculate_career_length(player1)
     cl2 = calculate_career_length(player2)
     cl_diff = abs(cl1 - cl2)
     if cl_diff <= 3:
-<<<<<<< HEAD
-        cl_pts = 3
-    elif cl_diff <= 5:
-        cl_pts = 2
-    else:
-        cl_pts = 0
-    score += cl_pts
-    breakdown["career_length_diff"] = cl_pts
-
-    # Career end proximity (retirement window)
-    end1 = player1.get("start_year", 0) + cl1 if player1.get("start_year", 0) and cl1 else 0
-    end2 = player2.get("start_year", 0) + cl2 if player2.get("start_year", 0) and cl2 else 0
-    end_pts = 0
-    if end1 and end2:
-        end_diff = abs(end1 - end2)
-        if end_diff <= 3:
-            end_pts = 2
-    score += end_pts
-    breakdown["career_end_proximity"] = end_pts
-
-    # All-Star (once)
-=======
         cl_pts = 6
     elif cl_diff <= 5:
         cl_pts = 3
@@ -195,7 +120,6 @@ def compute_similarity(player1, player2, name1=None, name2=None):
 
     # 7. Star power / accolades overlap
     all_star_pts = 0
->>>>>>> b1c0320a (Rebalance similarity scoring)
     if set(player1.get("all_star_seasons", [])) & set(player2.get("all_star_seasons", [])):
         all_star_pts = 5
     score += all_star_pts
@@ -233,18 +157,18 @@ def get_player(name):
     return None, None
 
 def calculate_career_length(player_data):
-    """Calculate career length from existing data or seasons data as fallback"""
-    # First, try to use the existing career_length from JSON
-    if "career_length" in player_data and player_data["career_length"] > 0:
-        return player_data["career_length"]
-    
-    # Fallback: calculate from seasons data
+    """
+    Calculate career length from seasons data only.
+
+    We ignore any pre-computed "career_length" fields in the JSON so that
+    edge cases like inactive / did-not-play years don't inflate the count.
+    """
     seasons = player_data.get("seasons", [])
     if not seasons:
-        return 0
-    
-    # Get unique seasons
-    unique_seasons = set(s["season"] for s in seasons)
+        # Fall back to stored career_length if we truly have no seasons data
+        return max(player_data.get("career_length", 0), 0)
+
+    unique_seasons = {s["season"] for s in seasons}
     return len(unique_seasons)
 
 def get_draft_year(player_data):
