@@ -276,6 +276,18 @@ const NBAGuessGame = () => {
           </div>
         </div>
 
+        {/* How to Play */}
+        <div className="panel how-to-play">
+          <h3>📘 How to Play</h3>
+          <ul className="how-to-play-list">
+            <li>We secretly pick a current or historical NBA player as the mystery target.</li>
+            <li>Type any NBA player and submit your guess to see a similarity score from 0–100.</li>
+            <li>Higher scores mean the guess is closer in teammates, teams, era, accolades, and more.</li>
+            <li>Use the breakdown under each guess to understand why it scored that way and adjust.</li>
+            <li>Keep guessing until you hit 100 and reveal the mystery player, or press Reveal to give up.</li>
+          </ul>
+        </div>
+
         <div className="main-layout">
           {/* Left Panel */}
           <div className="left-panel">

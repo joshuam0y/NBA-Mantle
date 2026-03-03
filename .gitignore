@@ -1,0 +1,22 @@
+# Global ignores for NBA-MANTLE repo
+
+# Node / frontend
+nba-frontend/node_modules/
+nba-frontend/build/
+nba-frontend/.pnp
+nba-frontend/.pnp.js
+
+# Python / backend
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+
+# OS / editor junk
+.DS_Store
+*.log
+.env
+.env.local
+.env.*.local
+
