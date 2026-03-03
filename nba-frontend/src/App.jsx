@@ -256,7 +256,7 @@ const NBAGuessGame = () => {
         <div className="header panel">
           <div className="title-section">
             <span>🏀</span>
-            <h1>NBA-MANTLE</h1>
+            <h1>NBA-MANTLE v2</h1>
             <span>🎯</span>
           </div>
           
