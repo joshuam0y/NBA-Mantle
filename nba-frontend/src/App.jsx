@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import './NBAGuessGame.css'; // Import the CSS file
-import { Analytics } from '@vercel/analytics/react';
+import './App.css';
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
