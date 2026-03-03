@@ -314,7 +314,7 @@ const NBAGuessGame = () => {
             color: '#cbd5e1',
             marginBottom: '1rem'
           }}>
-            Guess the mystery NBA player by finding similar players! (TEST)
+            Guess the mystery NBA player by finding similar players and tracking how close each guess is.
           </p>
           
           <div style={{
