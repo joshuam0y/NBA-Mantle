@@ -19,7 +19,7 @@ def load_players_db():
 players_db = load_players_db()
 guess_counter = {}
 
-MULTI_TEAM_MARKERS = {"2TM", "3TM", "4TM", "5TM", "6TM"}
+MULTI_TEAM_MARKERS = {"2TM", "3TM", "4TM", "5TM", "6TM", "TOT"}
 
 
 def _filtered_seasons(player):
@@ -28,6 +28,14 @@ def _filtered_seasons(player):
     return [
         s for s in seasons
         if s.get("team") not in MULTI_TEAM_MARKERS and "season" in s
+    ]
+
+
+def _filtered_teams(player):
+    """Return team list without aggregate entries like 'TOT', '2TM', etc."""
+    return [
+        t for t in player.get("teams", [])
+        if t not in MULTI_TEAM_MARKERS
     ]
 
 
@@ -78,7 +86,7 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     breakdown["teammate_years"] = pts
 
     # 3. Shared franchises (even if not same seasons)
-    overlap_teams = set(player1.get("teams", [])) & set(player2.get("teams", []))
+    overlap_teams = set(_filtered_teams(player1)) & set(_filtered_teams(player2))
     if len(overlap_teams) >= 3:
         team_pts = 10
     elif len(overlap_teams) == 2:
@@ -212,7 +220,7 @@ def create_players_summary():
             "draft_year": get_draft_year(player_data),
             "career_length": calculate_career_length(player_data),
             "position": player_data.get("position", ""),
-            "teams": player_data.get("teams", []),
+            "teams": _filtered_teams(player_data),
             "seasons_count": calculate_career_length(player_data),
         }
     
