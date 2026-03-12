@@ -107,16 +107,31 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     breakdown["shared_teams"] = team_pts
 
     # 4. Position similarity
-    p1_pos = (player1.get("position") or "").strip()
-    p2_pos = (player2.get("position") or "").strip()
+    p1_pos_raw = (player1.get("position") or "").strip()
+    p2_pos_raw = (player2.get("position") or "").strip()
+
+    # Use primary listed position (e.g., "PG" from "PG-SG")
+    p1_pos = p1_pos_raw.split("-")[0].strip()
+    p2_pos = p2_pos_raw.split("-")[0].strip()
+
+    POSITION_ADJACENT = {
+        "PG": {"SG"},
+        "SG": {"PG", "SF"},
+        "SF": {"SG", "PF"},
+        "PF": {"SF", "C"},
+        "C": {"PF"},
+    }
+
     if p1_pos and p1_pos == p2_pos:
-        pts = 10
-    elif p1_pos[:2] and p1_pos[:2] == p2_pos[:2]:
-        pts = 4
+        pos_pts = 10
+    elif p1_pos and p2_pos and p2_pos in POSITION_ADJACENT.get(p1_pos, set()):
+        # Adjacent positions (e.g., PG-SG, SG-SF, SF-PF, PF-C)
+        pos_pts = 5
     else:
-        pts = 0
-    score += pts
-    breakdown["position_match"] = pts
+        pos_pts = 0
+
+    score += pos_pts
+    breakdown["position_match"] = pos_pts
 
     # 5. Era proximity (start year)
     start1 = player1.get("start_year", 0)
@@ -153,16 +168,38 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     score += all_star_pts
     breakdown["all_star_overlap"] = all_star_pts
 
-    all_team_pts = 0
-    for sel1 in player1.get("all_team_selections", []):
-        for sel2 in player2.get("all_team_selections", []):
-            if sel1["season"] == sel2["season"] and sel1["type"] == sel2["type"]:
-                all_team_pts = 5
-                break
-        if all_team_pts:
+    # Split All-Team overlap into All-NBA / All-Defense / All-Rookie buckets
+    all_nba_pts = 0
+    all_defense_pts = 0
+    all_rookie_pts = 0
+
+    selections1 = player1.get("all_team_selections", [])
+    selections2 = player2.get("all_team_selections", [])
+
+    for sel1 in selections1:
+        for sel2 in selections2:
+            if sel1.get("season") != sel2.get("season"):
+                continue
+            t1 = (sel1.get("type") or "").lower()
+            t2 = (sel2.get("type") or "").lower()
+            if not t1 or t1 != t2:
+                continue
+
+            if "all-nba" in t1 and all_nba_pts == 0:
+                all_nba_pts = 5
+            elif "all-def" in t1 and all_defense_pts == 0:
+                all_defense_pts = 5
+            elif "rookie" in t1 and all_rookie_pts == 0:
+                all_rookie_pts = 5
+
+        # If we already have all three buckets filled, we can stop early
+        if all_nba_pts and all_defense_pts and all_rookie_pts:
             break
-    score += all_team_pts
-    breakdown["all_team_overlap"] = all_team_pts
+
+    score += all_nba_pts + all_defense_pts + all_rookie_pts
+    breakdown["all_nba_overlap"] = all_nba_pts
+    breakdown["all_defense_overlap"] = all_defense_pts
+    breakdown["all_rookie_overlap"] = all_rookie_pts
 
     award_pts = 0
     if set(player1.get("awards_won", [])) & set(player2.get("awards_won", [])):
@@ -223,6 +260,9 @@ def create_players_summary():
     summary = {}
     
     for player_name, player_data in players_db.items():
+        all_star_seasons = player_data.get("all_star_seasons", [])
+        is_all_star = len(all_star_seasons) > 0
+
         summary[player_name] = {
             "start_year": player_data.get("start_year", 0),
             "draft_year": get_draft_year(player_data),
@@ -230,6 +270,7 @@ def create_players_summary():
             "position": player_data.get("position", ""),
             "teams": _filtered_teams(player_data),
             "seasons_count": calculate_career_length(player_data),
+            "is_all_star": is_all_star,
         }
     
     return summary
