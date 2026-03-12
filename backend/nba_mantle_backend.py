@@ -207,8 +207,9 @@ def compute_similarity(player1, player2, name1=None, name2=None):
     score += award_pts
     breakdown["award_overlap"] = award_pts
 
-    # Clamp non-exact matches below 100
+    # Clamp non-exact matches below 100 and tag backend version
     breakdown["total"] = min(score, 99)
+    breakdown["backend_version"] = "split-awards-v1"
     return breakdown["total"], breakdown
 
 def get_player(name):
