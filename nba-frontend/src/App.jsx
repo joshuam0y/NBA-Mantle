@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
+const DAILY_STORAGE_KEY = 'nba-mantle-daily-state';
+
 const NBAGuessGame = () => {
+  const [mode, setMode] = useState('daily'); // 'daily' | 'hardcore'
+  const [modesInfo, setModesInfo] = useState(null);
   const [targetPlayer, setTargetPlayer] = useState('');
+  const [dailyDate, setDailyDate] = useState('');
   const [guess, setGuess] = useState('');
   const [guessHistory, setGuessHistory] = useState([]);
   const [gameWon, setGameWon] = useState(false);
@@ -19,22 +24,7 @@ const NBAGuessGame = () => {
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
-  // Fallback modern NBA players (only used if API loading fails)
-  const modernPlayers = [
-    'LeBron James', 'Stephen Curry', 'Kevin Durant', 'Giannis Antetokounmpo',
-    'Luka Dončić', 'Jayson Tatum', 'Joel Embiid', 'Nikola Jokić', 'Damian Lillard',
-    'Jimmy Butler', 'Kawhi Leonard', 'Anthony Davis', 'Russell Westbrook',
-    'James Harden', 'Chris Paul', 'Klay Thompson', 'Draymond Green',
-    'Paul George', 'Kyrie Irving', 'Bradley Beal', 'Devin Booker',
-    'Donovan Mitchell', 'Ja Morant', 'Trae Young', 'Zion Williamson',
-    'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
-  ];
-
-  const startNewGame = () => {
-    const playersToUse = allPlayers.length > 0 ? allPlayers : modernPlayers;
-    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
-    
-    setTargetPlayer(randomPlayer);
+  const resetRoundState = () => {
     setGuess('');
     setGuessHistory([]);
     setGameWon(false);
@@ -45,51 +35,117 @@ const NBAGuessGame = () => {
     setSuggestions([]);
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
-    
-    console.log('New game started with:', randomPlayer);
   };
+
+  const loadDailyTarget = async () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DAILY_STORAGE_KEY) || 'null');
+      const response = await fetch(`${API_BASE}/daily-target`);
+      const data = await response.json();
+
+      if (saved && saved.date === data.date) {
+        // Same calendar day: keep whatever progress they already made today.
+        setTargetPlayer(saved.target);
+        setDailyDate(saved.date);
+        setGuessHistory(saved.guessHistory || []);
+        setGuessCount(saved.guessCount || 0);
+        setGameWon(saved.gameWon || false);
+        setTop5Players(saved.top5Players || []);
+        return;
+      }
+
+      localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify({
+        date: data.date,
+        target: data.target,
+        guessHistory: [],
+        guessCount: 0,
+        gameWon: false,
+        top5Players: [],
+      }));
+      setTargetPlayer(data.target);
+      setDailyDate(data.date);
+      resetRoundState();
+    } catch (err) {
+      console.error('Could not load daily target:', err);
+      setError('Could not reach the server for today\'s player.');
+    }
+  };
+
+  const loadHardcoreTarget = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/hardcore-target`);
+      const data = await response.json();
+      setTargetPlayer(data.target);
+      resetRoundState();
+    } catch (err) {
+      console.error('Could not load hardcore target:', err);
+      setError('Could not reach the server for a new player.');
+    }
+  };
+
+  const startNewGame = () => {
+    if (mode === 'daily') {
+      // The daily target is shared by everyone; "New Game" only clears your guesses.
+      const saved = JSON.parse(localStorage.getItem(DAILY_STORAGE_KEY) || 'null');
+      if (saved) {
+        localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify({
+          ...saved, guessHistory: [], guessCount: 0, gameWon: false, top5Players: [],
+        }));
+      }
+      resetRoundState();
+    } else {
+      loadHardcoreTarget();
+    }
+  };
+
+  const switchMode = (nextMode) => {
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    resetRoundState();
+    if (nextMode === 'daily') {
+      loadDailyTarget();
+    } else {
+      loadHardcoreTarget();
+    }
+  };
+
+  useEffect(() => {
+    const persistDailyProgress = () => {
+      if (mode !== 'daily' || !dailyDate) return;
+      localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify({
+        date: dailyDate, target: targetPlayer, guessHistory, guessCount, gameWon, top5Players,
+      }));
+    };
+    persistDailyProgress();
+  }, [mode, dailyDate, targetPlayer, guessHistory, guessCount, gameWon, top5Players]);
 
   useEffect(() => {
     const loadPlayerNames = async () => {
       try {
-        // Try the correct endpoint first
-        let response = await fetch(`${API_BASE}/players`);
-        if (!response.ok) {
-          // Fallback to the other endpoint name
-          response = await fetch(`${API_BASE}/player_awards`);
-        }
-        
+        const response = await fetch(`${API_BASE}/players`);
         if (response.ok) {
           const playerNames = await response.json();
-          const sortedPlayers = playerNames.sort();
-          setAllPlayers(sortedPlayers);
-          const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
-          setTargetPlayer(randomPlayer);
-          console.log('Loaded', sortedPlayers.length, 'players from API');
-        } else {
-          throw new Error('Failed to fetch players');
+          setAllPlayers(playerNames.sort());
         }
-      } catch (error) {
-        console.error('Could not load players from API, using fallback:', error);
-        const fallback = modernPlayers;
-        setAllPlayers(fallback);
-        const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
-        setTargetPlayer(randomPlayer);
+      } catch (err) {
+        console.error('Could not load player list from API:', err);
       }
+    };
 
-      setGuess('');
-      setGuessHistory([]);
-      setGameWon(false);
-      setGuessCount(0);
-      setError('');
-      setTop5Players([]);
-      setShowAnswer(false);
-      setSuggestions([]);
-      setShowSuggestions(false);
-      setSelectedSuggestionIndex(-1);
+    const loadModesInfo = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/modes`);
+        if (response.ok) setModesInfo(await response.json());
+      } catch (err) {
+        console.error('Could not load mode info:', err);
+      }
     };
 
     loadPlayerNames();
+    loadModesInfo();
+    loadDailyTarget();
+    // Mount-only: these loaders read state via closures but must run exactly once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const makeGuess = async () => {
@@ -263,7 +319,30 @@ const NBAGuessGame = () => {
           <p className="subtitle">
             Guess the mystery NBA player by finding similar players!
           </p>
-          
+
+          <div className="mode-toggle">
+            <button
+              className={`mode-btn ${mode === 'daily' ? 'active' : ''}`}
+              onClick={() => switchMode('daily')}
+            >
+              📅 Daily
+            </button>
+            <button
+              className={`mode-btn ${mode === 'hardcore' ? 'active' : ''}`}
+              onClick={() => switchMode('hardcore')}
+            >
+              🔥 Hardcore
+            </button>
+          </div>
+
+          {modesInfo && (
+            <p className="mode-info">
+              {mode === 'daily'
+                ? `One shared player for everyone each day, drawn from ${modesInfo.daily.pool_size} recognizable names (All-Stars, award winners, multi-time All-NBA/Defense/Rookie selections). Resets at midnight UTC.`
+                : `Unlimited replays from a much wider pool of ${modesInfo.hardcore.pool_size} real rotation players, no accolades required. A real challenge.`}
+            </p>
+          )}
+
           <div className="stats">
             <span>⚡ Attempt #{guessCount}</span>
             {!gameWon && !showAnswer && (
@@ -371,8 +450,9 @@ const NBAGuessGame = () => {
                               handleSuggestionSelect(suggestion);
                             }}
                             onMouseEnter={() => setSelectedSuggestionIndex(index)}
-                            dangerouslySetInnerHTML={{ __html: suggestion }}
-                          />
+                          >
+                            {suggestion}
+                          </li>
                         ))}
                       </ul>
                     )}
@@ -414,7 +494,7 @@ const NBAGuessGame = () => {
 
               <div className="button-group">
                 <button className="new-game-btn" onClick={startNewGame}>
-                  🔄 New Game
+                  {mode === 'daily' ? '🔄 Retry Today\'s Player' : '🔄 New Player'}
                 </button>
                 
                 {!gameWon && !showAnswer && (

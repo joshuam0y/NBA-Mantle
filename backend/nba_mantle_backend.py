@@ -1,8 +1,11 @@
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 from difflib import get_close_matches
+import hashlib
 import json
 import os
+import random
+from datetime import date, timezone, datetime
 
 app = Flask(__name__, static_folder='build', static_url_path='')
 CORS(app)  # Enable CORS for all routes
@@ -262,6 +265,117 @@ def get_draft_year(player_data):
     
     return 0
 
+def compute_notability(player_data):
+    """
+    Fame/recognizability score used to pick fair targets for Daily and Hardcore mode.
+
+    The dataset has no box-score stats (no points, no games played), only seasons,
+    teams, teammates, position and accolades, so notability is built entirely from
+    accolades + longevity + recency: how many All-Star/All-Team/award seasons a
+    player has, how long they played, and how recently they played.
+    """
+    all_star_count = len(player_data.get("all_star_seasons", []))
+    all_team_count = len(player_data.get("all_team_selections", []))
+    awards_count = len(player_data.get("awards_won", []))
+    career_length = calculate_career_length(player_data)
+
+    seasons = _filtered_seasons(player_data)
+    last_season = max((s["season"] for s in seasons), default=player_data.get("start_year", 0))
+
+    score = (
+        all_star_count * 10
+        + all_team_count * 6
+        + awards_count * 15
+        + min(career_length, 20) * 1.5
+    )
+
+    # Mild recency nudge: a modern role player is still more recognizable to today's
+    # average player than an equally-accomplished player from the 1960s-80s.
+    if last_season >= 2015:
+        score *= 1.15
+    elif last_season < 1990:
+        score *= 0.85
+
+    return score, career_length, last_season
+
+
+def _percentile(sorted_values, p):
+    if not sorted_values:
+        return 0
+    idx = min(len(sorted_values) - 1, max(0, int(len(sorted_values) * p)))
+    return sorted_values[idx]
+
+
+def build_mode_pools(db):
+    """
+    Build the Daily and Hardcore target pools from the live notability distribution.
+
+    Daily mode draws only from the top slice of recognizable players (the "not too
+    hard" requirement) plus a hard accolade floor so a statistical fluke can't let an
+    obscure name slip in. Hardcore draws from a much wider slice, but still excludes
+    the bottom tier of one-or-two-season/no-accolade players so it stays a real
+    challenge rather than an unwinnable guessing game.
+    """
+    notability = {}
+    career_lengths = {}
+    last_seasons = {}
+    for name, data in db.items():
+        score, career_length, last_season = compute_notability(data)
+        notability[name] = score
+        career_lengths[name] = career_length
+        last_seasons[name] = last_season
+
+    sorted_scores = sorted(notability.values())
+    daily_floor = _percentile(sorted_scores, 0.93)
+    hardcore_floor = _percentile(sorted_scores, 0.45)
+
+    def is_clearly_notable(name):
+        d = db[name]
+        return (
+            len(d.get("all_star_seasons", [])) > 0
+            or len(d.get("awards_won", [])) > 0
+            or len(d.get("all_team_selections", [])) >= 2
+        )
+
+    daily_pool = sorted(
+        name for name, score in notability.items()
+        if score >= daily_floor and career_lengths[name] >= 5 and is_clearly_notable(name)
+    )
+    hardcore_pool = sorted(
+        name for name, score in notability.items()
+        if score >= hardcore_floor and career_lengths[name] >= 3
+    )
+
+    # Safety net: never ship an empty pool if the data is thinner than expected.
+    if not daily_pool:
+        daily_pool = sorted(notability, key=lambda n: notability[n], reverse=True)[:50]
+    if not hardcore_pool:
+        hardcore_pool = sorted(notability, key=lambda n: notability[n], reverse=True)[:500]
+
+    return {
+        "notability": notability,
+        "daily_pool": daily_pool,
+        "hardcore_pool": hardcore_pool,
+        "daily_floor": daily_floor,
+        "hardcore_floor": hardcore_floor,
+    }
+
+
+MODE_POOLS = build_mode_pools(players_db)
+
+
+def pick_daily_target(for_date=None):
+    """Deterministic pick shared by everyone playing Daily mode on a given UTC date."""
+    for_date = for_date or datetime.now(timezone.utc).date().isoformat()
+    pool = MODE_POOLS["daily_pool"]
+    seed = int(hashlib.sha256(f"daily:{for_date}".encode()).hexdigest(), 16)
+    return pool[seed % len(pool)], for_date
+
+
+def pick_hardcore_target():
+    return random.choice(MODE_POOLS["hardcore_pool"])
+
+
 def create_players_summary():
     """Create a summary of all players with filtering data"""
     summary = {}
@@ -332,6 +446,38 @@ def get_single_player(player_name):
         "name": matched_name,
         "data": enhanced_data
     })
+
+@app.route('/api/modes', methods=['GET'])
+def get_modes():
+    """Pool sizes and thresholds, so the frontend can show the game is criteria-driven."""
+    return jsonify({
+        "daily": {
+            "pool_size": len(MODE_POOLS["daily_pool"]),
+            "description": "Recognizable players only: at least one All-Star, award, "
+                            "or multiple All-NBA/All-Defense/All-Rookie selections.",
+        },
+        "hardcore": {
+            "pool_size": len(MODE_POOLS["hardcore_pool"]),
+            "description": "A much wider pool of real rotation players (3+ seasons), "
+                            "including many without major accolades.",
+        },
+        "total_players": len(players_db),
+    })
+
+
+@app.route('/api/daily-target', methods=['GET'])
+def get_daily_target():
+    """Same mystery player for everyone, for a given UTC calendar date."""
+    for_date = request.args.get('date')
+    target, resolved_date = pick_daily_target(for_date)
+    return jsonify({"date": resolved_date, "target": target, "mode": "daily"})
+
+
+@app.route('/api/hardcore-target', methods=['GET'])
+def get_hardcore_target():
+    """A fresh random target from the wider, harder pool. Replayable any time."""
+    return jsonify({"target": pick_hardcore_target(), "mode": "hardcore"})
+
 
 @app.route('/api/guess', methods=['POST'])
 def guess():
