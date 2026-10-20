@@ -217,9 +217,15 @@ def get_player(name):
     for player in players_db:
         if player.lower() == name:
             return players_db[player], player
-    close = get_close_matches(name, players_db.keys(), n=1, cutoff=0.8)
+    # Compare against lowercased keys too - a case mismatch (any typo'd name vs.
+    # the properly-cased database, e.g. "lebron jams" vs "LeBron James") pushes
+    # difflib's similarity ratio below the cutoff even when the name is close,
+    # so case-sensitive matching here was silently dropping fuzzy suggestions.
+    lower_to_original = {player.lower(): player for player in players_db}
+    close = get_close_matches(name, lower_to_original.keys(), n=1, cutoff=0.8)
     if close:
-        return players_db[close[0]], close[0]
+        original = lower_to_original[close[0]]
+        return players_db[original], original
     return None, None
 
 def calculate_career_length(player_data):
