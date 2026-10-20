@@ -1,0 +1,28 @@
+name: Deploy backend to Render
+
+# Render deploy hooks are a single POST URL with no auth needed beyond the URL
+# itself staying secret, so this just calls it on every push to main instead
+# of waiting on Render's own GitHub integration (which isn't wired up on this
+# repo - no webhook is registered on it at all).
+#
+# One-time setup: Render dashboard -> the nba-mantle service -> Settings ->
+# Deploy Hook -> copy the URL -> GitHub repo -> Settings -> Secrets and
+# variables -> Actions -> New repository secret -> name it
+# RENDER_DEPLOY_HOOK_URL -> paste the URL. Until that secret exists this
+# workflow runs and no-ops (skips the curl) instead of failing the push.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL secret not set yet - skipping. See the comment at the top of this file."
+            exit 0
+          fi
+          curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
